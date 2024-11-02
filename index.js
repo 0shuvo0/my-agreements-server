@@ -4,39 +4,17 @@ require('dotenv').config()
 
 const cors = require('cors')
 
+const sharp = require("sharp")
+
 const {
     getUserProfile,
     verifyLoginToken,
-    saveAgreement } = require('./utils/firebase')
+    saveAgreement,
+    updateProfilePicture } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
 
-const multer = require('multer')
-const storage = multer.memoryStorage()
-const fileFilter = (req, file, cb) => {
-    // Check if file is empty (allow null/empty)
-    if (!file) return cb(null, true);
-
-    // Check file type
-    const allowedTypes = ['application/pdf', 'text/plain'];
-    if (!allowedTypes.includes(file.mimetype)) {
-        return cb(new Error('Only PDF and TXT files are allowed'), false);
-    }
-
-    // Apply size limits based on file type
-    const maxSize = file.mimetype === 'application/pdf' ? 100 * 1024 * 1024 : 50 * 1024; // 100MB for PDF, 50KB for TXT
-    if (file.size > maxSize) {
-        return cb(new Error(`File size exceeds the limit of ${maxSize / 1024 / 1024}MB`), false);
-    }
-
-    // If all checks pass
-    cb(null, true);
-};
-const upload = multer({
-        storage,
-        fileFilter,
-        limits: { fileSize: 100 * 1024 * 1024 }// Max size set to 100MB for safety
-    })
+const { pdfUpload, imgUpload } = require('./utils/multer')
 
 
 const app = express()
@@ -104,7 +82,7 @@ const agreementTypes = [
     "time and material contract",
     "other"
 ]
-app.post('/save-agreement', verifyLoginToken, upload.single('agreementFile'), async (req, res) => {
+app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'), async (req, res) => {
     try{
         const requiredDocuments = JSON.parse(req.body.requiredDocuments)
         const {
@@ -173,7 +151,45 @@ app.post('/save-agreement', verifyLoginToken, upload.single('agreementFile'), as
 })
 
 
+app.post('/update-profile-picture', verifyLoginToken, imgUpload.single('profilePicture'), async (req, res) => {
+    try{
+        if (!req.file) {
+            return res.status(400).json({success: false, message: "No file uploaded" });
+        }
 
+        // Validate file type
+        if (!["image/jpeg", "image/png"].includes(req.file.mimetype)) {
+            return res.status(400).json({success: false, message: "Invalid file type" });
+        }
+
+        // Max image dimensions
+        const MAX_WIDTH = 500;
+        const MAX_HEIGHT = 500;
+
+        // Validate image dimensions
+        const image = sharp(req.file.buffer);
+        const metadata = await image.metadata();
+
+        if (metadata.width > MAX_WIDTH || metadata.height > MAX_HEIGHT) {
+            return res.status(400).json({success: false, message: `Image dimensions exceed the limit of ${MAX_WIDTH}x${MAX_HEIGHT} pixels.` });
+
+        }
+
+        const imgUrl = await updateProfilePicture(req.user, req.file)
+
+        return res.json({
+            success: true,
+            content: imgUrl
+        })
+    }catch(error){
+        console.log(error)
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        })
+    }
+})
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000')

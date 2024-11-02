@@ -138,9 +138,64 @@ const getUserProfile = async (user) => {
     }
 };
 
+const updateProfilePicture = async (user, file) => {
+    try{
+        //retrieve user profile from Firestore
+        const profile = await getUserProfile(user);
+        const email = user.email
+        
+        /// Upload image to Firebase Storage
+        const fileExtension = file.originalname.split('.').pop();
+        const fileName = `${Date.now()}-${file.originalname}`
+        const fileUpload = bucket.file(fileName);
+
+        let imgUrl
+
+        await new Promise((resolve, reject) => {
+            const stream = fileUpload.createWriteStream({
+                metadata: {
+                    contentType: file.mimetype
+                }
+            });
+
+            stream.on('error', (error) => {
+                console.error('Error uploading file:', error);
+                reject(error);
+            });
+
+            stream.on('finish', () => {
+                console.log('File uploaded to storage');
+                imgUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+                resolve();
+            });
+
+            stream.end(file.buffer);
+        })
+
+        // Update profile picture URL in Firestore
+        //if profile does not exist, create a new one
+        if(!profile){
+            await db.collection('users').doc(user.uid).set({
+                email,
+                profilePicture: imgUrl
+            })
+        }else{
+            await db.collection('users').doc(user.uid).update({
+                profilePicture: imgUrl
+            })
+        }
+
+        return imgUrl
+    }catch(error){
+        console.error('Error updating profile picture:', error);
+        throw error;
+    }
+}
+
 
 module.exports = {
     getUserProfile,
     verifyLoginToken,
-    saveAgreement
+    saveAgreement,
+    updateProfilePicture
 }
