@@ -4,7 +4,10 @@ require('dotenv').config()
 
 const cors = require('cors')
 
-const { verifyLoginToken, saveAgreement } = require('./utils/firebase')
+const {
+    getUserProfile,
+    verifyLoginToken,
+    saveAgreement } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
 
@@ -47,6 +50,31 @@ app.get('/', (req, res) => {
     res.send('Hello World')
 })
 
+app.get('/user-profile', verifyLoginToken, async (req, res) => {
+    try{
+        const userProfile = await getUserProfile(req.user)
+
+        if(!userProfile){
+            return res.json({
+                success: false,
+                message: 'not found'
+            })
+        }
+
+        res.json({
+            content: userProfile,
+            success: true
+        })
+    }catch(error){
+        console.log(error)
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        })
+    }
+})
+
 
 app.post('/ai-agreement-generator', verifyLoginToken, async (req, res) => {
     try{
@@ -65,6 +93,7 @@ app.post('/ai-agreement-generator', verifyLoginToken, async (req, res) => {
     }
 })
 
+
 const agreementTypes = [
     "nda from",
     "hourly contract",
@@ -75,7 +104,6 @@ const agreementTypes = [
     "time and material contract",
     "other"
 ]
-
 app.post('/save-agreement', verifyLoginToken, upload.single('agreementFile'), async (req, res) => {
     try{
         const requiredDocuments = JSON.parse(req.body.requiredDocuments)
@@ -104,8 +132,9 @@ app.post('/save-agreement', verifyLoginToken, upload.single('agreementFile'), as
         }
 
         if(!req.file){
-            if(!agreementText || agreementText.trim().length < 100 || agreementText.trim().length > 100000){
+            if((!agreementText || agreementText.trim().length < 100 || agreementText.trim().length > 100000)){
                 console.log(3)
+                
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid agreement text'

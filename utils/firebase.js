@@ -59,16 +59,13 @@ const saveAgreement = async (inputs, user, file = null) => {
         agreement.customDocumentName = customDocumentName;
     }
 
-    if (!file && agreementText) {
-        agreement.agreementText = agreementText;
-    }
+    try {
+        if (file) {
+            // If there's a file, upload it to Firebase Storage
+            const fileExtension = file.originalname.split('.').pop();
+            const fileName = `${agreementType}-${agreementName}-${user.uid}-${Date.now()}.${fileExtension}`;
+            const fileUpload = bucket.file(fileName);
 
-    if (file) {
-        const fileExtension = file.originalname.split('.').pop();
-        const fileName = `${agreementType}-${agreementName}-${user.uid}-${Date.now()}.${fileExtension}`;
-        const fileUpload = bucket.file(fileName);
-
-        try {
             await new Promise((resolve, reject) => {
                 const stream = fileUpload.createWriteStream({
                     metadata: {
@@ -83,39 +80,67 @@ const saveAgreement = async (inputs, user, file = null) => {
 
                 stream.on('finish', () => {
                     console.log('File uploaded to storage');
-                    agreement.fileUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`
-                    agreement.fileType = fileExtension
-                    
+                    agreement.fileUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+                    agreement.fileType = fileExtension;
                     resolve();
                 });
 
                 stream.end(file.buffer); // Assuming `file.buffer` exists when using memory storage
             });
 
-            // Save to Firestore after the file has been uploaded
-            const result = await db.collection('agreements').add(agreement);
-            console.log('Agreement saved with ID:', result.id);
-            return { ...agreement, id: result.id };
+        } else if (agreementText) {
+            // If there's no file but agreementText exists, save it as a .txt file
+            const fileName = `${agreementType}-${agreementName}-${user.uid}-${Date.now()}.txt`;
+            const fileUpload = bucket.file(fileName);
 
-        } catch (error) {
-            console.error('Error saving agreement:', error);
-            throw error;
+            await new Promise((resolve, reject) => {
+                const stream = fileUpload.createWriteStream({
+                    metadata: {
+                        contentType: 'text/plain'
+                    }
+                });
+
+                stream.on('error', (error) => {
+                    console.error('Error uploading agreementText file:', error);
+                    reject(error);
+                });
+
+                stream.on('finish', () => {
+                    console.log('Text file uploaded to storage');
+                    agreement.fileUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+                    agreement.fileType = 'txt';
+                    resolve();
+                });
+
+                stream.end(Buffer.from(agreementText, 'utf-8')); // Convert agreementText to Buffer for upload
+            });
         }
-    } else {
-        try {
-            // Save agreement without file
-            const result = await db.collection('agreements').add(agreement);
-            console.log('Agreement saved with ID:', result.id);
-            return { ...agreement, id: result.id };
-        } catch (error) {
-            console.error('Error saving agreement:', error);
-            throw error;
-        }
+
+        // Save to Firestore after the file (or agreementText file) has been uploaded
+        const result = await db.collection('agreements').add(agreement);
+        console.log('Agreement saved with ID:', result.id);
+        return { ...agreement, id: result.id };
+
+    } catch (error) {
+        console.error('Error saving agreement:', error);
+        throw error;
+    }
+};
+
+const getUserProfile = async (user) => {
+    try {
+        //return user profile from Firestore or null if it doesn't exist
+        const snapshot = await db.collection('users').doc(user.uid).get();
+        return snapshot.exists ? snapshot.data() : null;
+    } catch (error) {
+        console.error('Error getting user profile:', error);
+        throw error;
     }
 };
 
 
 module.exports = {
+    getUserProfile,
     verifyLoginToken,
     saveAgreement
 }
