@@ -138,23 +138,27 @@ const getUserProfile = async (user) => {
     }
 };
 
-const updateProfilePicture = async (user, file) => {
-    try{
-        //retrieve user profile from Firestore
+const updatePicture = async (user, buffer, mimetype, docField = 'profilePicture') => {
+    try {
+        // Retrieve user profile from Firestore
         const profile = await getUserProfile(user);
-        const email = user.email
-        
-        /// Upload image to Firebase Storage
-        const fileExtension = file.originalname.split('.').pop();
-        const fileName = `${Date.now()}-${file.originalname}`
+        const email = user.email;
+
+        // Define file metadata and name
+        const fileExtension = mimetype.split('/').pop();
+        const fileName = `${Date.now()}-${docField.toLowerCase()}-${user.uid}.${fileExtension}`;
         const fileUpload = bucket.file(fileName);
 
-        let imgUrl
+        let prevImgUrl;
+        if (profile) {
+            prevImgUrl = profile[docField];
+        }
 
+        // Upload the processed image buffer to Firebase Storage
         await new Promise((resolve, reject) => {
             const stream = fileUpload.createWriteStream({
                 metadata: {
-                    contentType: file.mimetype
+                    contentType: mimetype,
                 }
             });
 
@@ -163,31 +167,97 @@ const updateProfilePicture = async (user, file) => {
                 reject(error);
             });
 
-            stream.on('finish', () => {
+            stream.on('finish', async () => {
                 console.log('File uploaded to storage');
                 imgUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+                try {
+                    // Make the file publicly accessible
+                    await fileUpload.makePublic();
+                    console.log('File is now public');
+                } catch (error) {
+                    console.error('Error making file public:', error);
+                }
+
+                // Delete previous profile picture if it exists
+                if (prevImgUrl) {
+                    const prevFileName = prevImgUrl.split('/').pop();
+                    const prevFile = bucket.file(prevFileName);
+                    prevFile.delete().then(() => {
+                        console.log('Previous profile picture deleted');
+                    }).catch((error) => {
+                        console.error('Error deleting previous profile picture:', error);
+                    });
+                }
+
                 resolve();
             });
 
-            stream.end(file.buffer);
-        })
+            // Write the processed image buffer to Firebase Storage
+            stream.end(buffer);
+        });
 
         // Update profile picture URL in Firestore
-        //if profile does not exist, create a new one
-        if(!profile){
+        if (!profile) {
+            // If profile doesn't exist, create a new one
             await db.collection('users').doc(user.uid).set({
                 email,
-                profilePicture: imgUrl
-            })
-        }else{
+                [docField]: imgUrl,
+            });
+        } else {
+            // Update the profile picture URL
             await db.collection('users').doc(user.uid).update({
-                profilePicture: imgUrl
-            })
+                [docField]: imgUrl,
+            });
         }
 
-        return imgUrl
-    }catch(error){
+        return imgUrl;
+    } catch (error) {
         console.error('Error updating profile picture:', error);
+        throw error;
+    }
+};
+
+const updateProfilePicture = async (user, buffer, mimetype) => {
+    try{
+        return await updatePicture(user, buffer, mimetype, 'profilePicture')
+    }catch(error){
+        console.error(error)
+        throw error
+    }
+}
+
+const updateOrganizationLogo = async (user, buffer, mimetype) => {
+    try{
+        return await updatePicture(user, buffer, mimetype, 'organizationLogo')
+    }catch(error){
+        console.error(error)
+        throw error
+    }
+}
+
+const saveProfileDetails = async (user, fullName, organizationName, organizationTagline) => {
+    console.log('Saving profile details:', fullName, organizationName, organizationTagline);
+    try {
+        //if user profile doesn't exist, create a new one
+        // await db.collection('users').doc(user.uid).set({
+        //     fullName,
+        //     organizationName,
+        //     organizationTagline,
+        // }, { merge: true });
+
+        //save profile and rertun it
+        const profile = {
+            fullName,
+            organizationName,
+            organizationTagline,
+        };
+
+        await db.collection('users').doc(user.uid).set(profile, { merge: true });
+
+        return profile;
+    } catch (error) {
+        console.error('Error saving profile details:', error);
         throw error;
     }
 }
@@ -197,5 +267,7 @@ module.exports = {
     getUserProfile,
     verifyLoginToken,
     saveAgreement,
-    updateProfilePicture
+    updateProfilePicture,
+    updateOrganizationLogo,
+    saveProfileDetails
 }

@@ -4,13 +4,15 @@ require('dotenv').config()
 
 const cors = require('cors')
 
-const sharp = require("sharp")
+const { imageValidationMiddleware } = require('./utils/utils')
 
 const {
     getUserProfile,
     verifyLoginToken,
     saveAgreement,
-    updateProfilePicture } = require('./utils/firebase')
+    updateProfilePicture,
+    updateOrganizationLogo,
+    saveProfileDetails } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
 
@@ -151,43 +153,76 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
 })
 
 
-app.post('/update-profile-picture', verifyLoginToken, imgUpload.single('profilePicture'), async (req, res) => {
-    try{
-        if (!req.file) {
-            return res.status(400).json({success: false, message: "No file uploaded" });
-        }
 
-        // Validate file type
-        if (!["image/jpeg", "image/png"].includes(req.file.mimetype)) {
-            return res.status(400).json({success: false, message: "Invalid file type" });
-        }
+app.post('/update-profile-picture', verifyLoginToken, imgUpload.single('profilePicture'), imageValidationMiddleware, async (req, res) => {
+    try {
+        const imgUrl = await updateProfilePicture(req.user, req.processedBuffer, req.mimetype);
 
-        // Max image dimensions
-        const MAX_WIDTH = 500;
-        const MAX_HEIGHT = 500;
-
-        // Validate image dimensions
-        const image = sharp(req.file.buffer);
-        const metadata = await image.metadata();
-
-        if (metadata.width > MAX_WIDTH || metadata.height > MAX_HEIGHT) {
-            return res.status(400).json({success: false, message: `Image dimensions exceed the limit of ${MAX_WIDTH}x${MAX_HEIGHT} pixels.` });
-
-        }
-
-        const imgUrl = await updateProfilePicture(req.user, req.file)
-
-        return res.json({
-            success: true,
-            content: imgUrl
-        })
-    }catch(error){
-        console.log(error)
+        return res.json({ success: true, content: imgUrl });
+    } catch (error) {
+        console.error(error);
         res.status(500).json({
             content: error.message,
             message: 'Something went wrong',
             success: false
-        })
+        });
+    }
+})
+
+app.post('/update-organization-logo', verifyLoginToken, imgUpload.single('organizationLogo'), imageValidationMiddleware, async (req, res) => {
+    try {
+        const imgUrl = await updateOrganizationLogo(req.user, req.processedBuffer, req.mimetype);
+
+        return res.json({ success: true, content: imgUrl });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
+    }
+})
+
+app.post('/save-profile-details', verifyLoginToken, async (req, res) => {
+    try {
+        const mendatoryFields = ['fullName', 'organizationName', 'organizationTagline']
+        console.log(req.body)
+        for(let field of mendatoryFields){
+            if(!req.body[field]){
+                res.status(400).json({
+                    success: false,
+                    message: 'Please fill all the fields'
+                })
+                console.log(1)
+                return
+            }
+        }
+
+        for(let field of mendatoryFields){
+            if(req.body[field].trim().length < 3){
+                res.status(400).json({
+                    success: false,
+                    message: 'All fields must be atleast 3 characters long'
+                })
+                console.log(2)
+                return
+            }
+        }
+
+
+        const { fullName, organizationName, organizationTagline } = req.body;
+
+        const p = await saveProfileDetails(req.user, fullName, organizationName, organizationTagline);
+
+        return res.json({ success: true, content: p });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
     }
 })
 
