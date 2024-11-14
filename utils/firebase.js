@@ -127,11 +127,57 @@ const saveAgreement = async (inputs, user, file = null) => {
     }
 };
 
+
+
+
+
+
+const saveSubscriptionData = async (uid, subscription) => {
+    try{
+        console.log('Saving subscription data:', subscription)
+        //save subscription data to Firestore, overwriting any existing data
+        await db.collection('subscriptions').doc(uid).set(subscription)
+    }catch(error){
+        console.error('Error saving subscription data:', error)
+        throw error
+    }
+}
+
+const getSusbcriptionData = async (uid) => {
+    try{
+        const snapshot = await db.collection('subscriptions').doc(uid).get()
+        return snapshot.exists ? snapshot.data() : null
+    }catch(error){
+        console.error('Error getting subscription data:', error)
+        throw error
+    }
+}
+
+
+
+
+
+
 const getUserProfile = async (user) => {
     try {
         //return user profile from Firestore or null if it doesn't exist
+
         const snapshot = await db.collection('users').doc(user.uid).get();
-        return snapshot.exists ? snapshot.data() : null;
+        const subscriptionData = await getSusbcriptionData(user.uid)
+
+        if(!snapshot.exists && !subscriptionData){
+            return null
+        }
+
+        const data = snapshot.data()
+        
+
+        return {
+            profile: data || null,
+            subscription: subscriptionData
+        }
+
+
     } catch (error) {
         console.error('Error getting user profile:', error);
         throw error;
@@ -262,12 +308,13 @@ const saveProfileDetails = async (user, fullName, organizationName, organization
     }
 }
 
-
 module.exports = {
     getUserProfile,
     verifyLoginToken,
     saveAgreement,
     updateProfilePicture,
     updateOrganizationLogo,
-    saveProfileDetails
+    saveProfileDetails,
+    getSusbcriptionData,
+    saveSubscriptionData
 }

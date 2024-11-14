@@ -12,9 +12,16 @@ const {
     saveAgreement,
     updateProfilePicture,
     updateOrganizationLogo,
-    saveProfileDetails } = require('./utils/firebase')
+    saveProfileDetails,
+    getSusbcriptionData
+ } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
+
+const { getSubscriptionURL,
+        getSubscriptionCustomerPortalURL,
+        changeSubscriptionPlan
+        } = require('./subscriptions')
 
 const { pdfUpload, imgUpload } = require('./utils/multer')
 
@@ -24,7 +31,11 @@ const app = express()
 app.use(cors())
 
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf
+    }
+}));
 
 app.get('/', (req, res) => {
     res.send('Hello World')
@@ -34,10 +45,25 @@ app.get('/user-profile', verifyLoginToken, async (req, res) => {
     try{
         const userProfile = await getUserProfile(req.user)
 
-        if(!userProfile){
+        if(!userProfile.subscription){
+            console.log('not subscribed')
             return res.json({
                 success: false,
-                message: 'not found'
+                message: 'not subscribed',
+                content: {
+                    profile: userProfile.profile || null,
+                }
+            })
+        }
+
+        if(!userProfile.profile){
+            console.log('not found')
+            return res.json({
+                success: false,
+                message: 'not found',
+                content: {
+                    subscription: userProfile.subscription || null,
+                }
             })
         }
 
@@ -226,8 +252,100 @@ app.post('/save-profile-details', verifyLoginToken, async (req, res) => {
     }
 })
 
+app.get('/subscription-url', verifyLoginToken, async (req, res) => {
+    try {
+        
+        const { packageName, yearly } = req.query
+        if(!packageName){
+            return res.status(400).json({
+                success: false,
+                message: 'Package name is required'
+            })
+        }
+
+
+        const url = await getSubscriptionURL(req.user, packageName, yearly === 'true')
+
+        return res.json({ success: true, content: url });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
+    }
+})
+
+app.get('/subscription-customer-portal', verifyLoginToken, async (req, res) => {
+    try {
+        const uid = req.user.uid
+        const data = await getSusbcriptionData(uid)
+
+        if(!data){
+            return res.json({
+                success: false,
+                message: 'No subscription found',
+                content: null
+            })
+        }
+
+        const subscription_id = data.first_subscription_item?.subscription_id
+
+        if(!subscription_id){
+            return res.json({
+                success: false,
+                message: 'Error getting subscription id',
+                content: null
+            })
+        }
+
+        const url = await getSubscriptionCustomerPortalURL(subscription_id)
+
+        res.json({
+            success: true,
+            content: url
+        })
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
+    }
+})
+
+
+app.post('/change-subscription-plan', verifyLoginToken, async (req, res) => {
+    try {
+        const { packageName, yearly } = req.body
+
+        if(!packageName){
+            return res.status(400).json({
+                success: false,
+                message: 'Package name is required'
+            })
+        }
+
+        await changeSubscriptionPlan(req.user, packageName, yearly)
+
+        return res.json({ success: true, content: 'success' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
+    }
+})
+
+
+const webhookHandler = require('./subscriptions/webhooks')
+app.post('/lmnqzwh', webhookHandler)
+
+
 app.listen(3000, () => {
     console.log('Server is running on port 3000')
 });
-
-
