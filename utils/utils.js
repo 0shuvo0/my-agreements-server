@@ -38,4 +38,11 @@ async function imageValidationMiddleware(req, res, next) {
     next();
 }
 
-module.exports = {imageValidationMiddleware};
+function isValidEmail(email){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+
+
+
+module.exports = {imageValidationMiddleware,isValidEmail };

@@ -35,6 +35,9 @@ const verifyLoginToken = async (req, res, next) => {
     }
 }
 
+
+
+
 const saveAgreement = async (inputs, user, file = null) => {
     const {
         agreementType,
@@ -78,8 +81,9 @@ const saveAgreement = async (inputs, user, file = null) => {
                     reject(error);
                 });
 
-                stream.on('finish', () => {
-                    console.log('File uploaded to storage');
+                stream.on('finish', async () => {
+                    // Make the file publicly accessible
+                    await fileUpload.makePublic();
                     agreement.fileUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
                     agreement.fileType = fileExtension;
                     resolve();
@@ -105,8 +109,9 @@ const saveAgreement = async (inputs, user, file = null) => {
                     reject(error);
                 });
 
-                stream.on('finish', () => {
+                stream.on('finish', async () => {
                     console.log('Text file uploaded to storage');
+                    await fileUpload.makePublic();
                     agreement.fileUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
                     agreement.fileType = 'txt';
                     resolve();
@@ -125,10 +130,120 @@ const saveAgreement = async (inputs, user, file = null) => {
         console.error('Error saving agreement:', error);
         throw error;
     }
+}
+
+const getAgreements = async (uid) => {
+    try {
+        //order by createdAt
+        const snapshot = await db.collection('agreements').where('user', '==', uid).orderBy('createdAt', 'desc').get();
+        const agreements = [];
+
+        snapshot.forEach((doc) => {
+            agreements.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        return agreements;
+    } catch (error) {
+        console.error('Error getting agreements:', error);
+        throw error;
+    }
+}
+
+const shareAgreement = async (uid, data) => {
+    try {
+        const { agreementId, email, startDate, endDate, amount, description } = data
+
+        // Get the agreement from Firestore, make sure it exists and agreement.user === uid
+        const agreementRef = db.collection('agreements').doc(agreementId);
+        const agreementDoc = await agreementRef.get();
+
+        if (!agreementDoc.exists) {
+            throw new Error('Agreement not found');
+        }
+
+        const agreementData = agreementDoc.data();
+        if (agreementData.user !== uid) {
+            throw new Error('Unauthorized');
+        }
+
+
+        // Save the shared agreement to Firestore
+
+        //expires in 24 hours
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 1);
+
+        const shareData = {
+            agreementId,
+            email,
+            createdAt: new Date(),
+            expiresAt: expiresAt,
+            creatorId: uid
+        }
+
+        if (startDate) {//eg: '2024-11-21T00:00:00.000Z'
+            shareData.startDate = new Date(startDate);
+        }
+
+        if (endDate) {
+            shareData.endDate = new Date(endDate);
+        }
+
+        if (amount) {
+            shareData.amount = amount;
+        }
+
+        if (description) {
+            shareData.description = description;
+        }
+
+        const result = await db.collection('sharedAgreements').add(shareData)
+
+
+        
+        return { ...shareData, id: result.id };
+    } catch (error) {
+        console.error('Error sharing agreement:', error);
+        throw error;
+    }
+}
+const getSigneeContent = async (id) => {
+    try {
+        // Fetch the shared agreement document
+        const sharedAgreementDoc = await db.collection('sharedAgreements').doc(id).get();
+        if (!sharedAgreementDoc.exists) {
+            throw new Error('Shared agreement not found');
+        }
+
+        const sharedAgreementData = sharedAgreementDoc.data();
+
+        // Fetch the agreement and user documents in parallel
+        const [agreementDoc, userDoc] = await Promise.all([
+            db.collection('agreements').doc(sharedAgreementData.agreementId).get(),
+            db.collection('users').doc(sharedAgreementData.creatorId).get()
+        ]);
+
+        if (!agreementDoc.exists) {
+            throw new Error('Agreement not found');
+        }
+
+        const agreement = agreementDoc.data();
+        const user = userDoc.exists ? userDoc.data() : null;
+
+        // Return the combined result
+        return {
+            meta: sharedAgreementData,
+            agreement,
+            user,
+        };
+    } catch (error) {
+        console.error('Error getting signee content:', error.message);
+        throw error;
+    }
 };
-
-
-
 
 
 
@@ -309,12 +424,18 @@ const saveProfileDetails = async (user, fullName, organizationName, organization
 }
 
 module.exports = {
-    getUserProfile,
     verifyLoginToken,
+
+    getUserProfile,
     saveAgreement,
+    getAgreements,
+    shareAgreement,
+    getSigneeContent,
+
     updateProfilePicture,
     updateOrganizationLogo,
     saveProfileDetails,
+    
     getSusbcriptionData,
     saveSubscriptionData
 }
