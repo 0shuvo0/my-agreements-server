@@ -38,6 +38,42 @@ const verifyLoginToken = async (req, res, next) => {
 
 
 
+
+async function uploadFileToFbStorage(file, mimetype) {
+    const fileExtension = mimetype.split('/').pop();
+    const fileName = `${Date.now()}-${parseInt(Math.random() * 1000000)}.${fileExtension}`;
+    
+    const fileReference = bucket.file(fileName);
+
+    return new Promise((resolve, reject) => {
+        const stream = fileReference.createWriteStream({
+            metadata: {
+                contentType: mimetype
+            }
+        });
+
+        stream.on('error', (error) => {
+            reject(error);
+        });
+
+        stream.on('finish', async () => {
+            try {
+                // Make the file public
+                await fileReference.makePublic();
+                const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+                resolve(url);
+            } catch (error) {
+                reject(error);
+            }
+        });
+
+        stream.end(file.buffer);
+    });
+}
+
+
+
+
 const saveAgreement = async (inputs, user, file = null) => {
     const {
         agreementType,
@@ -243,6 +279,83 @@ const getSigneeContent = async (id) => {
         console.error('Error getting signee content:', error.message);
         throw error;
     }
+}
+
+const deleteAgreement = async (uid, agreementId) => {
+    try {
+        // Fetch agreement and validate ownership
+        const agreementRef = db.collection('agreements').doc(agreementId);
+        const agreementDoc = await agreementRef.get();
+
+        if (!agreementDoc.exists) {
+            throw new Error('Agreement not found');
+        }
+
+        const agreementData = agreementDoc.data();
+        if (agreementData.user !== uid) {
+            throw new Error('Unauthorized');
+        }
+
+        // Fetch all signatures for this agreement
+        const signaturesRef = db.collection('signatures').where('agreementId', '==', agreementId);
+        const signatures = await signaturesRef.get();
+
+        // Prepare deletion promises for all files
+        const fileDeletionPromises = [];
+        const signatureDeletionPromises = [];
+
+        // Add agreement file to deletion queue if it exists
+        if (agreementData.fileUrl) {
+            const agreementFileName = agreementData.fileUrl.split('/').pop();
+            fileDeletionPromises.push(
+                bucket.file(agreementFileName).delete()
+                    .catch(err => console.warn(`Failed to delete agreement file ${agreementFileName}:`, err))
+            );
+        }
+
+        // Process all signatures
+        signatures.docs.forEach(signature => {
+            const signatureData = signature.data();
+            
+            // Add signature file to deletion queue
+            if (signatureData.signature) {
+                const signatureFileName = signatureData.signature.split('/').pop();
+                fileDeletionPromises.push(
+                    bucket.file(signatureFileName).delete()
+                        .catch(err => console.warn(`Failed to delete signature file ${signatureFileName}:`, err))
+                );
+            }
+
+            // Add signature documents to deletion queue
+            if (signatureData.documents) {
+                Object.values(signatureData.documents).forEach(docUrl => {
+                    const docFileName = docUrl.split('/').pop();
+                    fileDeletionPromises.push(
+                        bucket.file(docFileName).delete()
+                            .catch(err => console.warn(`Failed to delete document file ${docFileName}:`, err))
+                    );
+                });
+            }
+
+            // Add signature document deletion to queue
+            signatureDeletionPromises.push(
+                db.collection('signatures').doc(signature.id).delete()
+                    .catch(err => console.warn(`Failed to delete signature document ${signature.id}:`, err))
+            );
+        });
+
+        // Execute all deletions in parallel
+        await Promise.all([
+            ...fileDeletionPromises,
+            ...signatureDeletionPromises,
+            agreementRef.delete()
+        ]);
+
+        return agreementData;
+    } catch (error) {
+        console.error('Error deleting agreement:', error);
+        throw error;
+    }
 };
 
 
@@ -267,6 +380,149 @@ const getSusbcriptionData = async (uid) => {
         throw error
     }
 }
+
+const signAgreement = async (data) => {
+    // {
+    //     id: 'dceD3GniTCafEZxmw8Rg'
+    //     photo: null,
+    //     'id-card': null,    
+    //     passport: null, 
+    //     'drivers-license': null,
+    //     custom: null,
+    //     signature: null
+    // }
+    // everything except signature is optional
+    // signature will be a blob of image
+    // others can either be File object of pdf/gif or image blob
+    // console.log(data)
+    const { id, signature } = data
+
+    try {
+        if(!id) throw new Error('Agreement ID is required')
+        if(!signature) throw new Error('Signature is required')
+
+        // id is shared agreement id   
+        const sharedAgreementRef = await db.collection('sharedAgreements').doc(id) 
+        const sharedAgreementDoc = await sharedAgreementRef.get()    
+        if(!sharedAgreementDoc.exists) throw new Error('Shared agreement not found')
+
+        
+        const sharedAgreementData = sharedAgreementDoc.data()
+        const agreementId = sharedAgreementData.agreementId
+        const creatorId = sharedAgreementData.creatorId
+        const signeeEmail = sharedAgreementData.email       
+
+        //fetch agreement
+        const agreementRef = await db.collection('agreements').doc(agreementId)
+        const agreementDoc = await agreementRef.get()
+        if(!agreementDoc.exists) throw new Error('Agreement not found')
+
+        const agreementData = agreementDoc.data()
+        const requiredDocuments = agreementData.requiredDocuments || []
+
+        if(requiredDocuments.length){
+            //check if all required documents are present
+            for(const doc of requiredDocuments){
+                if(!data[doc]){
+                    throw new Error(`Missing required document: ${doc}`)
+                }
+            }       
+        }
+
+        //upload signature to firebase storage and get url
+        const signatureUrl = await uploadFileToFbStorage(signature, signature.mimetype)
+
+        //upload other required documents to firebase storage and get urls
+        const documentUrls = {}
+
+        if (requiredDocuments.length > 0) {
+            const uploadPromises = requiredDocuments.map(async (doc) => {
+                if (data[doc]) {
+                    const url = await uploadFileToFbStorage(data[doc], data[doc].mimetype);
+                    documentUrls[doc] = url;
+                }
+            });
+        
+            // Wait for all uploads to complete
+            await Promise.all(uploadPromises);
+        }
+
+        //save signature and document urls to Firestore
+        let status = 'pending'
+
+        const  { startDate, endDate, amount, description } = sharedAgreementData
+        //if current date  >= startDate set status to 'active'
+        if(startDate && new Date() >= new Date(startDate)){
+            status = 'started'
+        }
+        //if current date > endDate set status to 'expired'
+        if(endDate && new Date() > new Date(endDate)){
+            status = 'complete'
+        }
+
+        const signatureData = {
+            signature: signatureUrl,
+            signedAt: new Date(),
+            signedBy: signeeEmail,
+            agreementId,
+            creatorId,
+            approved: false
+        }
+
+        if(startDate){ signatureData.startDate = new Date(startDate._seconds * 1000) }
+        if(endDate){ signatureData.endDate = new Date(endDate._seconds * 1000) }
+
+        if(status){ signatureData.status = status }
+        if(amount){ signatureData.amount = amount }
+        if(description){ signatureData.description = description }
+
+        if(requiredDocuments.length){
+            signatureData.documents = documentUrls
+        }
+        if(requiredDocuments.includes('custom')){
+            signatureData.customDocumentName = agreementData.customDocumentName
+        }
+
+        const result = await db.collection('signatures').add(signatureData) 
+
+        //increase agreement.toReview and agreement.signeeCount by 1 or set to 1 if they don't exist
+        await agreementRef.update({
+            toReview: admin.firestore.FieldValue.increment(1),
+            signeeCount: admin.firestore.FieldValue.increment(1)
+        })
+
+        //delete shared agreement
+        await sharedAgreementRef.delete() 
+
+        return { ...signatureData, id: result.id }
+    }catch(error){
+        throw error
+    }
+    
+}
+
+const getSignees = async (uid, agreementId) => {
+    try {
+        console.log('Getting signees:', uid, agreementId);
+        const snapshot = await db.collection('signatures')
+                                .where('creatorId', '==', uid)
+                                .where('agreementId', '==', agreementId).get();
+        const signees = [];
+
+        snapshot.forEach((doc) => {
+            signees.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        console.log(signees);
+        return signees;
+    } catch (error) {
+        console.error('Error getting signees:', error);
+        throw error;
+    }
+}
+
 
 
 
@@ -431,6 +687,9 @@ module.exports = {
     getAgreements,
     shareAgreement,
     getSigneeContent,
+    signAgreement,
+    getSignees,
+    deleteAgreement,
 
     updateProfilePicture,
     updateOrganizationLogo,

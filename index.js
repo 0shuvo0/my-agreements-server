@@ -16,7 +16,10 @@ const {
     getSusbcriptionData,
     getAgreements,
     shareAgreement,
-    getSigneeContent
+    getSigneeContent,
+    signAgreement,
+    getSignees,
+    deleteAgreement
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
@@ -26,9 +29,9 @@ const { getSubscriptionURL,
         changeSubscriptionPlan
         } = require('./subscriptions')
 
-const { sendSignAgreementEmail } = require('./emails')
+const { sendSignAgreementEmail, sendAgreementSignedEmail } = require('./emails')
 
-const { pdfUpload, imgUpload } = require('./utils/multer')
+const { pdfUpload, imgUpload, pdfAndImageUploadMiddleware } = require('./utils/multer')
 
 
 const app = express()
@@ -296,7 +299,6 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
             agreementText,
             customDocumentName
             } = req.body
-            console.log(agreementType);
             
         if(!agreementTypes.includes(agreementType)){
             console.log(1)
@@ -307,7 +309,6 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
         }
 
         if(!agreementName || agreementName.trim().length < 10){
-            console.log(2)
             return res.status(400).json({
                 success: false,
                 message: 'Invalid agreement name'
@@ -316,7 +317,6 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
 
         if(!req.file){
             if((!agreementText || agreementText.trim().length < 100 || agreementText.trim().length > 100000)){
-                console.log(3)
                 
                 return res.status(400).json({
                     success: false,
@@ -326,7 +326,6 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
         }
 
         if(requiredDocuments.includes('custom') && (!customDocumentName || !customDocumentName.trim())){
-            console.log(4)
             return res.status(400).json({
                 success: false,
                 message: 'Invalid custom document name'
@@ -365,7 +364,6 @@ app.get('/get-agreements', verifyLoginToken, async (req, res) => {
             success: true
         })
     }catch(error){
-        console.log(error)
         res.status(500).json({
             content: error.message,
             message: 'Something went wrong',
@@ -395,8 +393,8 @@ app.post('/share-agreement', verifyLoginToken, async (req, res) => {
     try{
         const r = await shareAgreement(uid, { agreementId, email, startDate, endDate, amount, description })
         
-        const signingLink = `https://my-agreements.com/sign/${r.id}`
-        sendSignAgreementEmail(req.user.email, email, signingLink)
+        // const signingLink = `https://my-agreements.com/sign/${r.id}`
+        sendSignAgreementEmail(req.user.email, email, r.id) 
         console.log(r)
         return res.json({
             success: true,
@@ -425,6 +423,35 @@ app.get('/get-signee-content', async (req, res) => {
             content
         })
     }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
+app.post('/sign-agreement', pdfAndImageUploadMiddleware, async (req, res) => {
+    try{
+        const data = {}
+        data.id = req.body.id
+        data.signature = req.files['signature'][0]
+
+        if(req.files['photo']){ data.photo = req.files['photo'][0] }
+        if(req.files['id-card']){ data['id-card'] = req.files['id-card'][0] }
+        if(req.files['passport']){ data['passport'] = req.files['passport'][0] }
+        if(req.files['drivers-license']){ data['drivers-license'] = req.files['drivers-license'][0] }
+        if(req.files['custom']){ data.custom = req.files['custom'][0] }
+
+        
+        const content = await signAgreement(data)
+
+        sendAgreementSignedEmail(content.creatorEmail, content.signeeEmail, content.id)
+
+        return res.json({
+            success: true,
+            content: content
+        })
+    }catch(error){
         console.log(error)
         return res.status(500).json({
             success: false,
@@ -432,6 +459,60 @@ app.get('/get-signee-content', async (req, res) => {
         })
     }
 })
+
+app.get('/get-signees', verifyLoginToken, async (req, res) => {
+    const id = req.query.id
+    const uid = req.user.uid
+
+    if(!id.trim()){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+
+    try{
+        const signees = await getSignees(uid, id)
+
+        return res.json({
+            success: true,
+            content: signees
+        })
+    }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+
+})
+
+app.post('/delete-agreement', verifyLoginToken, async (req, res) => {
+    const id = req.body.id
+    const uid = req.user.uid
+
+    if(!id.trim()){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+
+    try{
+        await deleteAgreement(uid, id)
+
+        return res.json({
+            success: true,
+            message: 'Agreement deleted'
+        })
+    }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
 
 
 

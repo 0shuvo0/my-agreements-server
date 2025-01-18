@@ -1,0 +1,5 @@
+//If you plan to handle files up to 100 MB in size, multer.memoryStorage may not be suitable for your use case, especially on Vercel.
+
+//Email functionality is not implemented yet
+
+//Instead of making all firebase bucket files publicly accessile use somthing like pre-signed urls
