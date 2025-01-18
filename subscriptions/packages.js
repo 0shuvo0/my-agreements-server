@@ -31,7 +31,7 @@ const packages = {
         billing: "yearly",
         maxAgreements: 10,
         maxSigneePerAgreement: 3
-    },
+    }, 
     standard_yearly: {
         name: 'Standard',
         price: 99.99,
