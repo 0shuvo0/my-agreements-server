@@ -16,6 +16,37 @@ const lemonSqueezyApiInstance = axios.create({
 const { getSusbcriptionData } = require('../utils/firebase')
 const packages = require('./packages')
 
+const verifySubscription = async (req, res, next) => {
+    const { user } = req
+    if(!user){
+        return res.status(401).send('Unauthorized')
+    }
+
+    req.hasActiveSubscription = true
+
+    const data = await getSusbcriptionData(user.uid)
+    if(!data || data.status !== 'active'){
+        req.hasActiveSubscription = false
+    }
+
+    
+    
+    const isYearly = data.billing === 'yearly'
+    const packageName = data.packageName.toLowerCase()
+    const p = `${packageName}_${isYearly ? 'yearly' : 'monthly'}`
+    const package = packages[p]
+
+    if(!package){
+        req.hasActiveSubscription = false
+        return next()
+    }
+    
+    req.subscription = data
+    req.subscriptionPackage = package
+
+    next()
+}
+
 
 const getSubscriptionURL = async (user, packageName, yearly = false) => {
     try{
@@ -134,5 +165,6 @@ const changeSubscriptionPlan = async (user, packageName, yearly = false) => {
 module.exports = {
     getSubscriptionURL,
     getSubscriptionCustomerPortalURL,
-    changeSubscriptionPlan
+    changeSubscriptionPlan,
+    verifySubscription
 }

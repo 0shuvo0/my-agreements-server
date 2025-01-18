@@ -188,6 +188,19 @@ const getAgreements = async (uid) => {
     }
 }
 
+const getAgreementsCount = async (uid) => {
+    try {
+        const agreementsQuery = db.collection('agreements').where('user', '==', uid);
+        const snapshot = await agreementsQuery.get();
+
+        return snapshot.empty ? 0 : snapshot.size;
+    } catch (error) {
+        console.error(`Error getting agreements count for user ${uid}:`, error);
+        throw error; // Re-throw the error for upstream handling
+    }
+};
+
+
 const shareAgreement = async (uid, data) => {
     try {
         const { agreementId, email, startDate, endDate, amount, description } = data
@@ -269,6 +282,7 @@ const getSigneeContent = async (id) => {
         const agreement = agreementDoc.data();
         const user = userDoc.exists ? userDoc.data() : null;
 
+        
         // Return the combined result
         return {
             meta: sharedAgreementData,
@@ -690,6 +704,7 @@ module.exports = {
     signAgreement,
     getSignees,
     deleteAgreement,
+    getAgreementsCount,
 
     updateProfilePicture,
     updateOrganizationLogo,

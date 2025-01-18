@@ -19,15 +19,19 @@ const {
     getSigneeContent,
     signAgreement,
     getSignees,
-    deleteAgreement
+    deleteAgreement,
+    getAgreementsCount
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
 
 const { getSubscriptionURL,
         getSubscriptionCustomerPortalURL,
-        changeSubscriptionPlan
+        changeSubscriptionPlan,
+        verifySubscription
         } = require('./subscriptions')
+
+const subscriptionPages = require('./subscriptions/packages')
 
 const { sendSignAgreementEmail, sendAgreementSignedEmail } = require('./emails')
 
@@ -290,8 +294,28 @@ const agreementTypes = [
     "time and material contract",
     "other"
 ]
-app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'), async (req, res) => {
+app.post('/save-agreement', verifyLoginToken, verifySubscription, pdfUpload.single('agreementFile'), async (req, res) => {
     try{
+        if(!req.hasActiveSubscription){
+            return res.json({
+                success: false,
+                message: 'You need to have an active subscription to create agreements'
+            })
+        }
+
+        const subscriptionPackage = req.subscriptionPackage
+        const agreementsCount = await getAgreementsCount(req.user.uid)
+
+        if(agreementsCount >= subscriptionPackage.maxAgreements){
+            return res.json({
+                success: false,
+                message: 'You have reached the maximum number of agreements allowed in your subscription. Please upgrade your subscription to create more agreements'
+            })
+        }
+
+
+
+
         const requiredDocuments = JSON.parse(req.body.requiredDocuments)
         const {
             agreementType,
@@ -301,7 +325,6 @@ app.post('/save-agreement', verifyLoginToken, pdfUpload.single('agreementFile'),
             } = req.body
             
         if(!agreementTypes.includes(agreementType)){
-            console.log(1)
             return res.status(400).json({
                 success: false,
                 message: 'Invalid agreement type'
@@ -393,7 +416,7 @@ app.post('/share-agreement', verifyLoginToken, async (req, res) => {
     try{
         const r = await shareAgreement(uid, { agreementId, email, startDate, endDate, amount, description })
         
-        // const signingLink = `https://my-agreements.com/sign/${r.id}`
+        const signingLink = `https://my-agreements.com/sign/${r.id}`
         sendSignAgreementEmail(req.user.email, email, r.id) 
         console.log(r)
         return res.json({
