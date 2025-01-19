@@ -20,7 +20,8 @@ const {
     signAgreement,
     getSignees,
     deleteAgreement,
-    getAgreementsCount
+    getAgreementsCount,
+    getSigneesCount
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
@@ -30,8 +31,6 @@ const { getSubscriptionURL,
         changeSubscriptionPlan,
         verifySubscription
         } = require('./subscriptions')
-
-const subscriptionPages = require('./subscriptions/packages')
 
 const { sendSignAgreementEmail, sendAgreementSignedEmail } = require('./emails')
 
@@ -395,7 +394,7 @@ app.get('/get-agreements', verifyLoginToken, async (req, res) => {
     }
 })
 
-app.post('/share-agreement', verifyLoginToken, async (req, res) => {
+app.post('/share-agreement', verifyLoginToken, verifySubscription, async (req, res) => {
     const { agreementId, email, startDate, endDate, amount, description } = req.body
     const uid = req.user.uid
 
@@ -414,6 +413,25 @@ app.post('/share-agreement', verifyLoginToken, async (req, res) => {
     }
 
     try{
+        if(!req.hasActiveSubscription){
+            return res.json({
+                success: false,
+                message: 'You need to have an active subscription to share agreements'
+            })
+        }
+
+        const subscriptionPackage = req.subscriptionPackage
+        const signeesCount = await getSigneesCount(uid, agreementId)
+
+        if(signeesCount >= subscriptionPackage.maxSigneePerAgreement){
+            return res.json({
+                success: false,
+                message: 'You have reached the maximum number of signees allowed in your subscription. Please upgrade your subscription to add more signees'
+            })
+        }
+
+
+
         const r = await shareAgreement(uid, { agreementId, email, startDate, endDate, amount, description })
         
         const signingLink = `https://my-agreements.com/sign/${r.id}`

@@ -167,7 +167,6 @@ const saveAgreement = async (inputs, user, file = null) => {
         throw error;
     }
 }
-
 const getAgreements = async (uid) => {
     try {
         //order by createdAt
@@ -187,7 +186,6 @@ const getAgreements = async (uid) => {
         throw error;
     }
 }
-
 const getAgreementsCount = async (uid) => {
     try {
         const agreementsQuery = db.collection('agreements').where('user', '==', uid);
@@ -199,7 +197,6 @@ const getAgreementsCount = async (uid) => {
         throw error; // Re-throw the error for upstream handling
     }
 };
-
 
 const shareAgreement = async (uid, data) => {
     try {
@@ -294,7 +291,6 @@ const getSigneeContent = async (id) => {
         throw error;
     }
 }
-
 const deleteAgreement = async (uid, agreementId) => {
     try {
         // Fetch agreement and validate ownership
@@ -371,6 +367,18 @@ const deleteAgreement = async (uid, agreementId) => {
         throw error;
     }
 };
+const getSigneesCount = async (uid, agreementId) => {
+    try {
+        const signeesQuery = db.collection('signatures').where('creatorId', '==', uid).where('agreementId', '==', agreementId);
+        const snapshot = await signeesQuery.get();
+
+        return snapshot.empty ? 0 : snapshot.size;
+    } catch (error) {
+        console.error(`Error getting signees count for user ${uid}:`, error);
+        throw error; // Re-throw the error for upstream handling
+    }
+}
+
 
 
 
@@ -705,6 +713,7 @@ module.exports = {
     getSignees,
     deleteAgreement,
     getAgreementsCount,
+    getSigneesCount,
 
     updateProfilePicture,
     updateOrganizationLogo,
