@@ -432,11 +432,13 @@ app.post('/share-agreement', verifyLoginToken, verifySubscription, async (req, r
 
 
 
-        const r = await shareAgreement(uid, { agreementId, email, startDate, endDate, amount, description })
+        const r = await shareAgreement(req.user, { agreementId, email, startDate, endDate, amount, description })
         
         const signingLink = `https://my-agreements.com/sign/${r.id}`
+
         sendSignAgreementEmail(req.user.email, email, r.id) 
-        console.log(r)
+    
+
         return res.json({
             success: true,
             content: {
@@ -485,8 +487,8 @@ app.post('/sign-agreement', pdfAndImageUploadMiddleware, async (req, res) => {
 
         
         const content = await signAgreement(data)
-
-        sendAgreementSignedEmail(content.creatorEmail, content.signeeEmail, content.id)
+        sendAgreementSignedEmail(content.creatorEmail, content.signedBy, content.id)
+        
 
         return res.json({
             success: true,
@@ -505,7 +507,7 @@ app.get('/get-signees', verifyLoginToken, async (req, res) => {
     const id = req.query.id
     const uid = req.user.uid
 
-    if(!id.trim()){
+    if(!id || !id.trim()){
         return res.status(400).json({
             success: false,
             message: 'Invalid id'

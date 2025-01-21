@@ -198,7 +198,9 @@ const getAgreementsCount = async (uid) => {
     }
 };
 
-const shareAgreement = async (uid, data) => {
+const shareAgreement = async (user, data) => {
+    const uid  = user.uid
+    const creatorEmail = user.email
     try {
         const { agreementId, email, startDate, endDate, amount, description } = data
 
@@ -227,7 +229,8 @@ const shareAgreement = async (uid, data) => {
             email,
             createdAt: new Date(),
             expiresAt: expiresAt,
-            creatorId: uid
+            creatorId: uid,
+            creatorEmail: creatorEmail
         }
 
         if (startDate) {//eg: '2024-11-21T00:00:00.000Z'
@@ -432,7 +435,8 @@ const signAgreement = async (data) => {
         const sharedAgreementData = sharedAgreementDoc.data()
         const agreementId = sharedAgreementData.agreementId
         const creatorId = sharedAgreementData.creatorId
-        const signeeEmail = sharedAgreementData.email       
+        const signeeEmail = sharedAgreementData.email
+        const creatorEmail = sharedAgreementData.creatorEmail
 
         //fetch agreement
         const agreementRef = await db.collection('agreements').doc(agreementId)
@@ -516,7 +520,11 @@ const signAgreement = async (data) => {
         //delete shared agreement
         await sharedAgreementRef.delete() 
 
-        return { ...signatureData, id: result.id }
+        return {
+             ...signatureData,
+             id: result.id,
+             creatorEmail: creatorEmail
+            }
     }catch(error){
         throw error
     }
@@ -525,7 +533,6 @@ const signAgreement = async (data) => {
 
 const getSignees = async (uid, agreementId) => {
     try {
-        console.log('Getting signees:', uid, agreementId);
         const snapshot = await db.collection('signatures')
                                 .where('creatorId', '==', uid)
                                 .where('agreementId', '==', agreementId).get();
