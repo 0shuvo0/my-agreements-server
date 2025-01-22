@@ -590,7 +590,7 @@ const deleteSignee = async (uid, agreementId, signeeId) => {
                     .catch(err => console.warn(`Failed to delete signature file ${signatureFileName}:`, err))
             );
         }
-
+ 
         // Add signature documents to deletion queue
         if (signatureData.documents) {
             Object.values(signatureData.documents).forEach(docUrl => {
