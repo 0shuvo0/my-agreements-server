@@ -21,7 +21,8 @@ const {
     getSignees,
     deleteAgreement,
     getAgreementsCount,
-    getSigneesCount
+    getSigneesCount,
+    deleteSignee
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
@@ -547,6 +548,32 @@ app.post('/delete-agreement', verifyLoginToken, async (req, res) => {
         return res.json({
             success: true,
             message: 'Agreement deleted'
+        })
+    }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
+app.post('/delete-signee', verifyLoginToken, async (req, res) => {
+    const uid = req.user.uid
+    const { agreementId, signeeId } = req.body
+
+    if(!agreementId || !signeeId){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+
+    try{
+        await deleteSignee(uid, agreementId, signeeId)
+
+        return res.json({
+            success: true,
+            message: 'Signee deleted'
         })
     }catch(error){
         return res.status(500).json({

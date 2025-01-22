@@ -544,10 +544,73 @@ const getSignees = async (uid, agreementId) => {
                 ...doc.data()
             });
         });
-        console.log(signees);
         return signees;
     } catch (error) {
         console.error('Error getting signees:', error);
+        throw error;
+    }
+}
+
+const deleteSignee = async (uid, agreementId, signeeId) => {
+    try {
+        // Fetch signature and validate ownership
+        const signatureRef = db.collection('signatures').doc(signeeId);
+        const signatureDoc = await signatureRef.get();
+
+        if (!signatureDoc.exists) {
+            throw new Error('Signature not found');
+        }
+
+        const signatureData = signatureDoc.data();
+        if (signatureData.creatorId !== uid || signatureData.agreementId !== agreementId) {
+            throw new Error('Unauthorized');
+        }
+
+
+        const wasApproved = signatureData.approved
+        // Fetch agreement and update
+        // Decrease agreement.signeeCount by 1
+        // Decrease agreement.toReview by 1 if the signature was not approved
+        const agreementRef = db.collection('agreements').doc(agreementId);
+
+        await agreementRef.update({
+            signeeCount: admin.firestore.FieldValue.increment(-1),
+            toReview: wasApproved ? admin.firestore.FieldValue.increment(0) : admin.firestore.FieldValue.increment(-1)
+        });
+
+
+        // Prepare deletion promises for all files
+        const fileDeletionPromises = [];
+
+        // Add signature file to deletion queue if it exists
+        if (signatureData.signature) {
+            const signatureFileName = signatureData.signature.split('/').pop();
+            fileDeletionPromises.push(
+                bucket.file(signatureFileName).delete()
+                    .catch(err => console.warn(`Failed to delete signature file ${signatureFileName}:`, err))
+            );
+        }
+
+        // Add signature documents to deletion queue
+        if (signatureData.documents) {
+            Object.values(signatureData.documents).forEach(docUrl => {
+                const docFileName = docUrl.split('/').pop();
+                fileDeletionPromises.push(
+                    bucket.file(docFileName).delete()
+                        .catch(err => console.warn(`Failed to delete document file ${docFileName}:`, err))
+                );
+            });
+        }
+
+        // Execute all deletions in parallel
+        await Promise.all([
+            ...fileDeletionPromises,
+            signatureRef.delete()
+        ]);
+
+        return signatureData;
+    } catch (error) {
+        console.error('Error deleting signee:', error);
         throw error;
     }
 }
@@ -721,6 +784,7 @@ module.exports = {
     deleteAgreement,
     getAgreementsCount,
     getSigneesCount,
+    deleteSignee,
 
     updateProfilePicture,
     updateOrganizationLogo,
