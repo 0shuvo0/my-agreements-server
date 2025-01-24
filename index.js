@@ -22,7 +22,8 @@ const {
     deleteAgreement,
     getAgreementsCount,
     getSigneesCount,
-    deleteSignee
+    deleteSignee,
+    approveSignee
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
@@ -33,7 +34,12 @@ const { getSubscriptionURL,
         verifySubscription
         } = require('./subscriptions')
 
-const { sendSignAgreementEmail, sendAgreementSignedEmail } = require('./emails')
+const { 
+        sendSignAgreementEmail,
+        sendAgreementSignedEmail,
+        sendSigneeApprovedEmail,
+        sendSigneeRejectededEmail
+    } = require('./emails')
 
 const { pdfUpload, imgUpload, pdfAndImageUploadMiddleware } = require('./utils/multer')
 
@@ -576,6 +582,64 @@ app.post('/delete-signee', verifyLoginToken, async (req, res) => {
             message: 'Signee deleted'
         })
     }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
+app.post('/approve-signee', verifyLoginToken, async (req, res) => {
+    const uid = req.user.uid
+    const { agreementId, signeeId } = req.body
+
+    if(!agreementId || !signeeId){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+
+    try{
+        const d = await approveSignee(uid, agreementId, signeeId)
+
+        sendSigneeApprovedEmail(req.user.email, d.signedBy, d.agreementName)
+
+        return res.json({
+            success: true,
+            message: 'Signee approved'
+        })
+    }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
+app.post('/reject-signee', verifyLoginToken, async (req, res) => {
+    const uid = req.user.uid
+    const { agreementId, signeeId, reason } = req.body
+
+    if(!agreementId || !signeeId){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+    
+
+    try{
+        const d = await deleteSignee(uid, agreementId, signeeId)
+
+        await sendSigneeRejectededEmail(req.user.email, d.signedBy, d.agreementName, reason)
+
+        return res.json({
+            success: true,
+            message: 'Signee deleted'
+        })
+    }catch(error){
+        console.log(error)
         return res.status(500).json({
             success: false,
             message: error.message || 'Something went wrong'

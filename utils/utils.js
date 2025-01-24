@@ -15,8 +15,8 @@ async function imageValidationMiddleware(req, res, next) {
     const mimetype = req.file.mimetype.split('/').pop();
 
     // Max image dimensions
-    const MAX_WIDTH = 1000;
-    const MAX_HEIGHT = 1000;
+    const MAX_WIDTH = 1100;
+    const MAX_HEIGHT = 1100;
 
     // Process image with sharp
     const image = sharp(req.file.buffer);

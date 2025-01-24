@@ -285,7 +285,10 @@ const getSigneeContent = async (id) => {
         
         // Return the combined result
         return {
-            meta: sharedAgreementData,
+            meta: {
+                ...sharedAgreementData,
+                amount: sharedAgreementData.amount
+            },
             agreement,
             user,
         };
@@ -369,7 +372,7 @@ const deleteAgreement = async (uid, agreementId) => {
         console.error('Error deleting agreement:', error);
         throw error;
     }
-};
+}
 const getSigneesCount = async (uid, agreementId) => {
     try {
         const signeesQuery = db.collection('signatures').where('creatorId', '==', uid).where('agreementId', '==', agreementId);
@@ -381,6 +384,53 @@ const getSigneesCount = async (uid, agreementId) => {
         throw error; // Re-throw the error for upstream handling
     }
 }
+const approveSignee = async (uid, agreementId, signeeId) => {
+    try {
+        // Fetch signature and validate ownership
+        const signatureRef = db.collection('signatures').doc(signeeId);
+        const signatureDoc = await signatureRef.get();
+
+        if (!signatureDoc.exists) {
+            throw new Error('Signature not found');
+        }
+
+        const signatureData = signatureDoc.data();
+        if (signatureData.creatorId !== uid || signatureData.agreementId !== agreementId) {
+            throw new Error('Unauthorized');
+        }
+
+        // Fetch agreement
+        // and get agreement.agreementName
+
+        const agreementRef = db.collection('agreements').doc(agreementId)
+        const agreementDoc = await agreementRef.get()
+        const agreementData = agreementDoc.data()
+        const agreementName = agreementData.agreementName
+
+        //delete agreement.toReview by 1
+        await agreementRef.update({
+            toReview: admin.firestore.FieldValue.increment(-1)
+        })
+
+
+
+        // Update signature approved status
+        await signatureRef.update({
+            approved: true
+        })
+
+        return {
+            ...signatureData,
+            approved: true,
+            agreementName
+        }
+    } catch (error) {
+        console.error('Error approving signee:', error);
+        throw error;
+    }
+}
+
+
 
 
 
@@ -477,14 +527,16 @@ const signAgreement = async (data) => {
         let status = 'pending'
 
         const  { startDate, endDate, amount, description } = sharedAgreementData
+
         //if current date  >= startDate set status to 'active'
-        if(startDate && new Date() >= new Date(startDate)){
-            status = 'started'
-        }
+        // if(startDate && new Date() >= new Date(startDate)){
+        //     status = 'started'
+        // }
+        
         //if current date > endDate set status to 'expired'
-        if(endDate && new Date() > new Date(endDate)){
-            status = 'complete'
-        }
+        // if(endDate && new Date() > new Date(endDate)){
+        //     status = 'complete'
+        // }
 
         const signatureData = {
             signature: signatureUrl,
@@ -573,6 +625,9 @@ const deleteSignee = async (uid, agreementId, signeeId) => {
         // Decrease agreement.toReview by 1 if the signature was not approved
         const agreementRef = db.collection('agreements').doc(agreementId);
 
+        const agreementDoc = await agreementRef.get();
+        const agreementData = agreementDoc.data();
+
         await agreementRef.update({
             signeeCount: admin.firestore.FieldValue.increment(-1),
             toReview: wasApproved ? admin.firestore.FieldValue.increment(0) : admin.firestore.FieldValue.increment(-1)
@@ -608,7 +663,10 @@ const deleteSignee = async (uid, agreementId, signeeId) => {
             signatureRef.delete()
         ]);
 
-        return signatureData;
+        return {
+            ...signatureData,
+            agreementName: agreementData.agreementName
+        };
     } catch (error) {
         console.error('Error deleting signee:', error);
         throw error;
@@ -785,6 +843,7 @@ module.exports = {
     getAgreementsCount,
     getSigneesCount,
     deleteSignee,
+    approveSignee,
 
     updateProfilePicture,
     updateOrganizationLogo,
