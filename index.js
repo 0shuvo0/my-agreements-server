@@ -402,8 +402,15 @@ app.get('/get-agreements', verifyLoginToken, async (req, res) => {
 })
 
 app.post('/share-agreement', verifyLoginToken, verifySubscription, async (req, res) => {
-    const { agreementId, email, startDate, endDate, amount, description } = req.body
+    const { agreementId, name, email, startDate, endDate, amount, description } = req.body
     const uid = req.user.uid
+
+    if(!name || name.trim().length < 3){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid name'
+        })
+    }
 
     if(!email || !isValidEmail(email)){
         return res.status(400).json({
@@ -439,7 +446,7 @@ app.post('/share-agreement', verifyLoginToken, verifySubscription, async (req, r
 
 
 
-        const r = await shareAgreement(req.user, { agreementId, email, startDate, endDate, amount, description })
+        const r = await shareAgreement(req.user, { agreementId, name, email, startDate, endDate, amount, description })
         
         const signingLink = `https://my-agreements.com/sign/${r.id}`
 

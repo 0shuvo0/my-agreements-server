@@ -202,7 +202,7 @@ const shareAgreement = async (user, data) => {
     const uid  = user.uid
     const creatorEmail = user.email
     try {
-        const { agreementId, email, startDate, endDate, amount, description } = data
+        const { agreementId, name, email, startDate, endDate, amount, description } = data
 
         // Get the agreement from Firestore, make sure it exists and agreement.user === uid
         const agreementRef = db.collection('agreements').doc(agreementId);
@@ -226,6 +226,7 @@ const shareAgreement = async (user, data) => {
 
         const shareData = {
             agreementId,
+            name,
             email,
             createdAt: new Date(),
             expiresAt: expiresAt,
@@ -485,6 +486,7 @@ const signAgreement = async (data) => {
         const sharedAgreementData = sharedAgreementDoc.data()
         const agreementId = sharedAgreementData.agreementId
         const creatorId = sharedAgreementData.creatorId
+        const signeeName = sharedAgreementData.name
         const signeeEmail = sharedAgreementData.email
         const creatorEmail = sharedAgreementData.creatorEmail
 
@@ -541,6 +543,7 @@ const signAgreement = async (data) => {
         const signatureData = {
             signature: signatureUrl,
             signedAt: new Date(),
+            signeeName,
             signedBy: signeeEmail,
             agreementId,
             creatorId,
@@ -587,7 +590,9 @@ const getSignees = async (uid, agreementId) => {
     try {
         const snapshot = await db.collection('signatures')
                                 .where('creatorId', '==', uid)
-                                .where('agreementId', '==', agreementId).get();
+                                .where('agreementId', '==', agreementId)
+                                .orderBy('signedAt', 'desc')
+                                .get();
         const signees = [];
 
         snapshot.forEach((doc) => {
