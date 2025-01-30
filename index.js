@@ -23,7 +23,9 @@ const {
     getAgreementsCount,
     getSigneesCount,
     deleteSignee,
-    approveSignee
+    approveSignee,
+    markStatus
+
  } = require('./utils/firebase')
 
 const { generateAgreement } = require('./utils/ai')
@@ -598,7 +600,7 @@ app.post('/delete-signee', verifyLoginToken, async (req, res) => {
 
 app.post('/approve-signee', verifyLoginToken, async (req, res) => {
     const uid = req.user.uid
-    const { agreementId, signeeId } = req.body
+    const { agreementId, signeeId, immediate } = req.body
 
     if(!agreementId || !signeeId){
         return res.status(400).json({
@@ -608,13 +610,16 @@ app.post('/approve-signee', verifyLoginToken, async (req, res) => {
     }
 
     try{
-        const d = await approveSignee(uid, agreementId, signeeId)
+        const d = await approveSignee(uid, agreementId, signeeId, immediate)
 
-        sendSigneeApprovedEmail(req.user.email, d.signedBy, d.agreementName)
+        sendSigneeApprovedEmail(req.user.email, d.signedBy, d.agreementName, immediate)
 
         return res.json({
             success: true,
-            message: 'Signee approved'
+            message: 'Signee approved',
+            content: {
+                status: d.status
+            }
         })
     }catch(error){
         return res.status(500).json({
@@ -653,6 +658,40 @@ app.post('/reject-signee', verifyLoginToken, async (req, res) => {
         })
     }
 })
+
+app.post('/mark-status', verifyLoginToken, async (req, res) => {
+    const uid = req.user.uid
+    const { agreementId, signeeId, status } = req.body
+
+    if(!agreementId || !signeeId){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid id'
+        })
+    }
+
+    if(!['started', 'complete'].includes(status)){
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid status'
+        })
+    }
+
+    try{
+        await markStatus(uid, agreementId, signeeId, status)
+
+        return res.json({
+            success: true,
+            message: 'Agreement marked as started'
+        })
+    }catch(error){
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Something went wrong'
+        })
+    }
+})
+
 
 
 

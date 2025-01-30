@@ -385,7 +385,7 @@ const getSigneesCount = async (uid, agreementId) => {
         throw error; // Re-throw the error for upstream handling
     }
 }
-const approveSignee = async (uid, agreementId, signeeId) => {
+const approveSignee = async (uid, agreementId, signeeId, immediate) => {
     try {
         // Fetch signature and validate ownership
         const signatureRef = db.collection('signatures').doc(signeeId);
@@ -396,6 +396,7 @@ const approveSignee = async (uid, agreementId, signeeId) => {
         }
 
         const signatureData = signatureDoc.data();
+
         if (signatureData.creatorId !== uid || signatureData.agreementId !== agreementId) {
             throw new Error('Unauthorized');
         }
@@ -414,15 +415,41 @@ const approveSignee = async (uid, agreementId, signeeId) => {
         })
 
 
+        let status = signatureData.status
+        if(immediate){
+            status = 'started'
+        }else if(signatureData.startDate){
+            //get start date in dd-mm-yyyy format
+            const startDate = signatureData.startDate.toDate()
+            const startDay = startDate.getDate()
+            const startMonth = startDate.getMonth() + 1
+            const startYear = startDate.getFullYear()
+            const formattedStartDate = `${startDay}-${startMonth}-${startYear}`
+
+            const currentDate = new Date()
+            const currentDay = currentDate.getDate()
+            const currentMonth = currentDate.getMonth() + 1
+            const currentYear = currentDate.getFullYear()
+            const formattedCurrentDate = `${currentDay}-${currentMonth}-${currentYear}`
+
+            console.log('Start date:', formattedStartDate)
+            console.log('Current date:', formattedCurrentDate)
+
+            if(formattedStartDate === formattedCurrentDate){
+                status = 'started'
+            }
+        }
 
         // Update signature approved status
         await signatureRef.update({
-            approved: true
+            approved: true,
+            status: status
         })
 
         return {
             ...signatureData,
             approved: true,
+            status: status,
             agreementName
         }
     } catch (error) {
@@ -430,6 +457,36 @@ const approveSignee = async (uid, agreementId, signeeId) => {
         throw error;
     }
 }
+const markStatus = async (uid, agreementId, signeeId, status) => {
+    try {
+        // Fetch signature and validate ownership
+        const signatureRef = db.collection('signatures').doc(signeeId);
+        const signatureDoc = await signatureRef.get();
+
+        if (!signatureDoc.exists) {
+            throw new Error('Signature not found');
+        }
+
+        const signatureData = signatureDoc.data();
+        if (signatureData.creatorId !== uid || signatureData.agreementId !== agreementId) {
+            throw new Error('Unauthorized');
+        }
+
+        // Update signature status to 'started'
+        await signatureRef.update({
+            status
+        });
+
+        return {
+            ...signatureData,
+            status
+        };
+    } catch (error) {
+        console.error('Error marking signee as started:', error);
+        throw error;
+    }
+}
+
 
 
 
@@ -849,6 +906,7 @@ module.exports = {
     getSigneesCount,
     deleteSignee,
     approveSignee,
+    markStatus,
 
     updateProfilePicture,
     updateOrganizationLogo,
