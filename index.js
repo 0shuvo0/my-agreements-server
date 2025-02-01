@@ -40,10 +40,13 @@ const {
         sendSignAgreementEmail,
         sendAgreementSignedEmail,
         sendSigneeApprovedEmail,
-        sendSigneeRejectededEmail
+        sendSigneeRejectededEmail,
+        sendStatusUpdateEmail
     } = require('./emails')
 
 const { pdfUpload, imgUpload, pdfAndImageUploadMiddleware } = require('./utils/multer')
+
+const initCronJobs = require('./cron-jobs')
 
 
 const app = express()
@@ -678,7 +681,8 @@ app.post('/mark-status', verifyLoginToken, async (req, res) => {
     }
 
     try{
-        await markStatus(uid, agreementId, signeeId, status)
+        const d = await markStatus(uid, agreementId, signeeId, status)
+        await sendStatusUpdateEmail(req.user.email, d.signedBy, d.agreementName, status)
 
         return res.json({
             success: true,
@@ -695,13 +699,11 @@ app.post('/mark-status', verifyLoginToken, async (req, res) => {
 
 
 
-
-
-
-
 const webhookHandler = require('./subscriptions/webhooks')
 app.post('/lmnqzwh', webhookHandler)
 
+
+initCronJobs()
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000')

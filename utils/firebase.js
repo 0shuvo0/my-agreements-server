@@ -472,6 +472,15 @@ const markStatus = async (uid, agreementId, signeeId, status) => {
             throw new Error('Unauthorized');
         }
 
+        //get agreementName
+        const agreementRef = db.collection('agreements').doc(agreementId)
+        const agreementDoc = await agreementRef.get()
+        if(!agreementDoc.exists){
+            throw new Error('Agreement not found')
+        }
+
+        const agreementData = agreementDoc.data()
+
         // Update signature status to 'started'
         await signatureRef.update({
             status
@@ -479,7 +488,8 @@ const markStatus = async (uid, agreementId, signeeId, status) => {
 
         return {
             ...signatureData,
-            status
+            status,
+            agreementData: agreementData.agreementName
         };
     } catch (error) {
         console.error('Error marking signee as started:', error);
@@ -891,6 +901,147 @@ const saveProfileDetails = async (user, fullName, organizationName, organization
     }
 }
 
+
+
+
+
+
+const deleteExpiredSharedAgreements = async () => {
+    try {
+        const snapshot = await db.collection('sharedAgreements')
+            .where('expiresAt', '<', new Date()) // Use admin.firestore.Timestamp.now() if stored as Timestamp
+            .get();
+
+        if (snapshot.empty) return;
+
+        const deletionPromises = [];
+        snapshot.forEach((doc) => {
+            deletionPromises.push(doc.ref.delete());
+        });
+
+        const results = await Promise.allSettled(deletionPromises);
+        results.forEach((result) => {
+            if (result.status === 'rejected') {
+                console.error('Failed to delete document:', result.reason);
+            }
+        });
+
+        console.log('Expired shared agreements deleted');
+    } catch (error) {
+        console.error('Error deleting expired shared agreements:', error);
+    }
+};
+
+//Mark status as started for all signees whose startDate is <= today
+//Mark status as complete for all signees whose endDate is < today
+//return array of objects
+//each object should have agreementName, creatorEmail, signeeEmail, status
+const markStatusUpdates = async () => {
+    const updates = [];
+    const now = new Date();
+    const batch = db.batch();
+
+    try {
+        // Note: Requires composite indexes on signatures collection for startDate and endDate
+        const startDateQuery = db.collection('signatures')
+            .where('startDate', '<=', now);
+
+        const endDateQuery = db.collection('signatures')
+            .where('endDate', '<', now);
+
+        // Run both queries in parallel
+        const [startDateSnapshot, endDateSnapshot] = await Promise.all([
+            startDateQuery.get(),
+            endDateQuery.get(),
+        ]);
+
+        // Combine results into a Map to avoid duplicates
+        const documents = new Map();
+
+        startDateSnapshot.forEach((doc) => {
+            documents.set(doc.id, { doc, status: 'started' });
+        });
+
+        endDateSnapshot.forEach((doc) => {
+            const existing = documents.get(doc.id);
+            if (existing) {
+                // Prioritize 'complete' status if endDate is in the past
+                existing.status = 'complete';
+            } else {
+                documents.set(doc.id, { doc, status: 'complete' });
+            }
+        });
+
+        // Process documents in parallel
+        await Promise.all(
+            Array.from(documents.values()).map(async ({ doc, status }) => {
+                const signeeData = doc.data();
+
+                // Skip if required fields are missing
+                if (!signeeData.agreementId || !signeeData.creatorId || !signeeData.signedBy) {
+                    console.warn(`Missing required fields in document ${doc.id}`);
+                    return;
+                }
+
+                try {
+                    // Only update if status has changed
+                    if (signeeData.status !== status) {
+                        batch.update(doc.ref, { status });
+                    }
+
+                    // Fetch agreement and creator details in parallel
+                    const [agreementDoc, creatorDoc] = await Promise.all([
+                        db.collection('agreements').doc(signeeData.agreementId).get(),
+                        db.collection('users').doc(signeeData.creatorId).get()
+                    ]);
+
+                    // Validate fetched documents
+                    if (!agreementDoc.exists) {
+                        console.warn(`Agreement with ID ${signeeData.agreementId} not found`);
+                        return;
+                    }
+                    if (!creatorDoc.exists) {
+                        console.warn(`Creator with ID ${signeeData.creatorId} not found`);
+                        return;
+                    }
+
+                    const agreementName = agreementDoc.data().agreementName;
+                    const creatorEmail = creatorDoc.data().email;
+
+                    // Add status update to the list
+                    updates.push({
+                        agreementName,
+                        creatorEmail,
+                        signeeEmail: signeeData.signedBy,
+                        status,
+                    });
+                } catch (error) {
+                    console.error(`Error processing document ${doc.id}:`, error);
+                }
+            })
+        );
+
+        // Commit all updates in a single batch
+        if (batch._mutations.length > 0) {
+            await batch.commit();
+        }
+
+        console.log('Status updates processed:', updates);
+        return updates;
+    } catch (error) {
+        console.error('Error marking status updates:', error);
+        throw error;
+    }
+};
+
+
+
+
+
+
+
+
+
 module.exports = {
     verifyLoginToken,
 
@@ -913,5 +1064,9 @@ module.exports = {
     saveProfileDetails,
     
     getSusbcriptionData,
-    saveSubscriptionData
+    saveSubscriptionData,
+
+
+    deleteExpiredSharedAgreements,
+    markStatusUpdates
 }

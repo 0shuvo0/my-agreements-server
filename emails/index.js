@@ -14,9 +14,14 @@ function sendSigneeRejectededEmail(creatorEmail, signeeEmail, agreementName, rea
   console.log(`Sending signee rejected email to ${signeeEmail} from ${creatorEmail} for agreement ${agreementName} with reason ${reason}`);
 }
 
+function sendStatusUpdateEmail(creatorEmail, signeeEmail, agreementName, status) {
+  console.log(`Sending status update email to ${signeeEmail} from ${creatorEmail} for agreement ${agreementName} with status ${status}`);
+}
+
 module.exports = {
     sendSignAgreementEmail,
     sendAgreementSignedEmail,
     sendSigneeApprovedEmail,
-    sendSigneeRejectededEmail
+    sendSigneeRejectededEmail,
+    sendStatusUpdateEmail
 };
