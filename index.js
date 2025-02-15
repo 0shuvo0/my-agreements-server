@@ -60,9 +60,7 @@ app.use(express.json({
     }
 }));
 
-app.get('/', (req, res) => {
-    res.send('Hello World')
-})
+
 
 
 //Profile routes
@@ -697,11 +695,21 @@ app.post('/mark-status', verifyLoginToken, async (req, res) => {
 })
 
 
+const path = require('path')
+app.use(express.static(path.join(__dirname, 'public/app')))
+app.use(express.static(path.join(__dirname, 'public/assets')))
 
+app.get('*', (req, res) => {
+    if(req.path.startsWith('/assets/')){
+        return res.sendFile(path.join(__dirname, 'public', req.path))
+    }
+        
+    res.sendFile(path.join(__dirname, 'public/app', 'index.html'))
+})
 
 const webhookHandler = require('./subscriptions/webhooks')
 app.post('/lmnqzwh', webhookHandler)
-
+ 
 
 initCronJobs()
 
