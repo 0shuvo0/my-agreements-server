@@ -2,7 +2,7 @@ const express = require('express')
 
 require('dotenv').config()
 
-const cors = require('cors')
+// const cors = require('cors')
 
 const { imageValidationMiddleware, isValidEmail } = require('./utils/utils')
 
@@ -51,7 +51,7 @@ const initCronJobs = require('./cron-jobs')
 
 const app = express()
 
-app.use(cors())
+// app.use(cors())
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({
