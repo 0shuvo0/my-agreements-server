@@ -2,7 +2,7 @@ const express = require('express')
 
 require('dotenv').config()
 
-// const cors = require('cors')
+const cors = require('cors')
 
 const { imageValidationMiddleware, isValidEmail } = require('./utils/utils')
 
@@ -699,11 +699,11 @@ const path = require('path')
 app.use(express.static(path.join(__dirname, 'public/app')))
 app.use(express.static(path.join(__dirname, 'public/assets')))
 
+app.get('/assets/*', cors(), (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', req.path))
+})
+
 app.get('*', (req, res) => {
-    if(req.path.startsWith('/assets/')){
-        return res.sendFile(path.join(__dirname, 'public', req.path))
-    }
-        
     res.sendFile(path.join(__dirname, 'public/app', 'index.html'))
 })
 

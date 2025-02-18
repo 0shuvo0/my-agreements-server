@@ -1,14 +1,45 @@
-const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+const { SendMailClient } = require("zeptomail");
 
-// Configure AWS SES
-const sesClient = new SESClient({
-  region: "us-east-1", // Replace with your AWS region
-  credentials: {
-    accessKeyId: process.env.AWS_SES_ID,
-    secretAccessKey: process.env.AWS_SES_SECRET,
-  },
-});
+// For CommonJS
+// var { SendMailClient } = require("zeptomail");
 
+const url = "api.zeptomail.com/";
+const token = process.env.ZEPTOMAIL_API_KEY;
+
+let client = new SendMailClient({url, token});
+
+
+// async function sendEmail(toAddresses, subject, html, text) {
+//   const params = {
+//     Source: "no-reply@my-agreements.com", // Must be a verified email
+//     Destination: {
+//       ToAddresses: toAddresses,
+//     },
+//     Message: {
+//       Subject: { Data: subject },
+//       Body: {
+//         Text: { Data: text },
+//         Html: { Data: `
+//           <div style="font-family: font-family: 'Montserrat', Arial, sans-serif">
+//             ${html}
+//             <div style="margin-top: 32px; display: flex; align-items: center; gap: 16px">
+//               <img src="https://my-agreements.com/assets/logo.svg" alt="My-Agreements.com Logo" style="width: 32px; height: 32px">
+//               <span><a style="font-size: 24px; text-decoration: none; color: #2d2b2b" href="https://my-agreements.com">My-Agreements.com</a></span>
+//             </div>
+//             <p>If you have any question reach out to us at <a href="mailto:contact@my-agreements.com">contact@my-agreements.com</a></p>
+//           </div>
+//         ` }
+//       }
+//     }
+//   }
+
+//   try {
+//     const command = new SendEmailCommand(params);
+//     const result = await sesClient.send(command);
+//   } catch (error) {
+//     console.error("Error sending email:", error);
+//   }
+// }
 async function sendEmail(toAddresses, subject, html, text) {
   const params = {
     Source: "no-reply@my-agreements.com", // Must be a verified email
@@ -34,8 +65,21 @@ async function sendEmail(toAddresses, subject, html, text) {
   }
 
   try {
-    const command = new SendEmailCommand(params);
-    const result = await sesClient.send(command);
+    await client.sendMail({
+      "from": 
+      {
+          "address": "noreply@my-agreements.com",
+          "name": "My Agreements"
+      },
+      "to": toAddresses.map((toAddress) => ({
+        "email_address": {
+          "address": toAddress
+        }
+      })),
+      "subject": subject,
+      "htmlbody": html,
+      "textbody": text
+    })
   } catch (error) {
     console.error("Error sending email:", error);
   }
