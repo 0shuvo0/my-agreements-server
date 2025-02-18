@@ -451,7 +451,7 @@ app.post('/share-agreement', verifyLoginToken, verifySubscription, async (req, r
 
         const r = await shareAgreement(req.user, { agreementId, name, email, startDate, endDate, amount, description })
         
-        const signingLink = `https://my-agreements.com/sign/${r.id}`
+        const signingLink = `https://app.my-agreements.com/sign/${r.id}`
 
         sendSignAgreementEmail(req.user.email, email, r.id) 
     

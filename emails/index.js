@@ -92,7 +92,7 @@ async function sendEmail(toAddresses, subject, html, text) {
 function sendSignAgreementEmail(creatorEmail, signeeEmail, id) {
   const subject = "Invitation to sign agreement";
 
-  const link = `https://my-agreements.com/sign/${id}`;
+  const link = `https://app.my-agreements.com/sign/${id}`;
 
   const html = `
     <h3>This email is an invitation to sign an agreement</h3>
@@ -109,7 +109,7 @@ function sendSignAgreementEmail(creatorEmail, signeeEmail, id) {
 function sendAgreementSignedEmail(creatorEmail, signeeEmail, id) {
   const subject = "Invitation to sign agreement";
 
-  const link = `https://my-agreements.com/agreement/${id}`;
+  const link = `https://app.my-agreements.com/agreement/${id}`;
 
   const html = `
     <h3>This email is to notify you that ${signeeEmail} has signed the agreement</h3>
