@@ -73,7 +73,6 @@ const getSubscriptionURL = async (user, packageName, yearly = false) => {
             checkout_data.name = user.fullName || user.displayName
         }
 
-
         const data = await lemonSqueezyApiInstance.post('/checkouts', {
             data: {
                 type: "checkouts",

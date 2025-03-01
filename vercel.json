@@ -11,5 +11,15 @@
         "src": "/(.*)",
         "dest": "index.js"
       }
+    ],
+    "crons": [
+      {
+        "path": "/api/deleteExpiredSharedAgreements",
+        "schedule": "0 1 * * *"
+      },
+      {
+        "path": "/api/sendStatusUpdateEmails",
+        "schedule": "0 */6 * * *"
+      }
     ]
-  }
+}

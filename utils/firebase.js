@@ -876,7 +876,7 @@ const updateOrganizationLogo = async (user, buffer, mimetype) => {
 }
 
 const saveProfileDetails = async (user, fullName, organizationName, organizationTagline) => {
-    console.log('Saving profile details:', fullName, organizationName, organizationTagline);
+    // console.log('Saving profile details:', fullName, organizationName, organizationTagline);
     try {
         //if user profile doesn't exist, create a new one
         // await db.collection('users').doc(user.uid).set({

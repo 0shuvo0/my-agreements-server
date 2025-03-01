@@ -46,12 +46,11 @@ const {
 
 const { pdfUpload, imgUpload, pdfAndImageUploadMiddleware } = require('./utils/multer')
 
-const initCronJobs = require('./cron-jobs')
 
 
 const app = express()
 
-// app.use(cors())
+app.use(cors())
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({
@@ -67,6 +66,16 @@ app.use(express.json({
 app.get('/user-profile', verifyLoginToken, async (req, res) => {
     try{
         const userProfile = await getUserProfile(req.user)
+
+        if(!userProfile){
+            return res.json({
+                success: false,
+                message: 'not found',
+                content: {
+                    profile: null,
+                }
+            })
+        }
 
         if(!userProfile.subscription){
             console.log('not subscribed')
@@ -716,7 +725,6 @@ const webhookHandler = require('./subscriptions/webhooks')
 app.post('/lmnqzwh', webhookHandler)
  
 
-initCronJobs()
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000')

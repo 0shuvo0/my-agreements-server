@@ -3,12 +3,12 @@ const cron = require('node-cron')
 const {
     deleteExpiredSharedAgreements,
     markStatusUpdates
- } = require('../utils/firebase')
+ } = require('../../utils/firebase')
 
 
 const { 
     sendStatusUpdateEmail
- } = require('../emails')
+ } = require('../../emails')
 
 function  initCronJobs(){
     // Schedule cron job to run daily at 1:00 AM
