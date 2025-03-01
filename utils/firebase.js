@@ -908,8 +908,11 @@ const saveProfileDetails = async (user, fullName, organizationName, organization
 
 const deleteExpiredSharedAgreements = async () => {
     try {
-        const snapshot = await db.collection('sharedAgreements')
-            .where('expiresAt', '<', new Date()) // Use admin.firestore.Timestamp.now() if stored as Timestamp
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    
+        const snapshot = await db.collection("sharedAgreements")
+            .where("createdAt", "<", twentyFourHoursAgo)
             .get();
 
         if (snapshot.empty) return;
@@ -940,62 +943,54 @@ const markStatusUpdates = async () => {
     const updates = [];
     const now = new Date();
     const batch = db.batch();
+    let hasUpdates = false; // Track if batch should commit
 
     try {
-        // Note: Requires composite indexes on signatures collection for startDate and endDate
-        const startDateQuery = db.collection('signatures')
-            .where('startDate', '<=', now);
-
-        const endDateQuery = db.collection('signatures')
-            .where('endDate', '<', now);
-
-        // Run both queries in parallel
+        // Query signees with startDate <= now and endDate < now
         const [startDateSnapshot, endDateSnapshot] = await Promise.all([
-            startDateQuery.get(),
-            endDateQuery.get(),
+            db.collection('signatures').where('startDate', '<=', now).where('status', '!=', 'started').get(),
+            db.collection('signatures').where('endDate', '<', now).where('status', '!=', 'complete').get(),
         ]);
 
-        // Combine results into a Map to avoid duplicates
         const documents = new Map();
 
+        // Process startDate snapshot (set status to 'started')
         startDateSnapshot.forEach((doc) => {
             documents.set(doc.id, { doc, status: 'started' });
         });
 
+        // Process endDate snapshot first (ensure 'complete' takes precedence)
         endDateSnapshot.forEach((doc) => {
-            const existing = documents.get(doc.id);
-            if (existing) {
-                // Prioritize 'complete' status if endDate is in the past
-                existing.status = 'complete';
-            } else {
-                documents.set(doc.id, { doc, status: 'complete' });
+            documents.set(doc.id, { doc, status: 'complete' });
+        });
+
+        // Process startDate snapshot (only set 'started' if not already 'complete')
+        startDateSnapshot.forEach((doc) => {
+            if (!documents.has(doc.id)) {
+                documents.set(doc.id, { doc, status: 'started' });
+            } else if (documents.get(doc.id).status !== 'complete') {
+                // If it's not already 'complete', mark as 'started'
+                documents.get(doc.id).status = 'started';
             }
         });
 
-        // Process documents in parallel
+        // Process documents and prepare batch updates
         await Promise.all(
             Array.from(documents.values()).map(async ({ doc, status }) => {
                 const signeeData = doc.data();
 
-                // Skip if required fields are missing
                 if (!signeeData.agreementId || !signeeData.creatorId || !signeeData.signedBy) {
                     console.warn(`Missing required fields in document ${doc.id}`);
                     return;
                 }
 
                 try {
-                    // Only update if status has changed
-                    if (signeeData.status !== status) {
-                        batch.update(doc.ref, { status });
-                    }
-
                     // Fetch agreement and creator details in parallel
                     const [agreementDoc, creatorDoc] = await Promise.all([
                         db.collection('agreements').doc(signeeData.agreementId).get(),
-                        db.collection('users').doc(signeeData.creatorId).get()
+                        db.collection('users').doc(signeeData.creatorId).get(),
                     ]);
 
-                    // Validate fetched documents
                     if (!agreementDoc.exists) {
                         console.warn(`Agreement with ID ${signeeData.agreementId} not found`);
                         return;
@@ -1015,14 +1010,20 @@ const markStatusUpdates = async () => {
                         signeeEmail: signeeData.signedBy,
                         status,
                     });
+
+                    // Only update Firestore if the status has changed
+                    if (signeeData.status !== status) {
+                        batch.update(doc.ref, { status });
+                        hasUpdates = true;
+                    }
                 } catch (error) {
                     console.error(`Error processing document ${doc.id}:`, error);
                 }
             })
         );
 
-        // Commit all updates in a single batch
-        if (batch._mutations.length > 0) {
+        // Commit batch updates only if changes were made
+        if (hasUpdates) {
             await batch.commit();
         }
 
@@ -1033,6 +1034,7 @@ const markStatusUpdates = async () => {
         throw error;
     }
 };
+
 
 
 

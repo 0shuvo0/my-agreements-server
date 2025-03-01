@@ -11,7 +11,6 @@ const {
  } = require('../emails')
 
 function  initCronJobs(){
-    
     // Schedule cron job to run daily at 1:00 AM
     cron.schedule('0 1 * * *', () => {
         deleteExpiredSharedAgreements()

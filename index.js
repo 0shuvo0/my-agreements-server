@@ -699,6 +699,11 @@ const path = require('path')
 app.use(express.static(path.join(__dirname, 'public/app')))
 app.use(express.static(path.join(__dirname, 'public/assets')))
 
+
+app.get('/keep-alive', cors(), (req, res) => {
+    res.status(200).json({ message: "Server is alive!" })
+})
+
 app.get('/assets/*', cors(), (req, res) => {
     res.sendFile(path.join(__dirname, 'public', req.path))
 })
