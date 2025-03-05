@@ -33,7 +33,8 @@ const { generateAgreement } = require('./utils/ai')
 const { getSubscriptionURL,
         getSubscriptionCustomerPortalURL,
         changeSubscriptionPlan,
-        verifySubscription
+        verifySubscription,
+        cancelSubscriptionPlan
         } = require('./subscriptions')
 
 const { 
@@ -269,6 +270,22 @@ app.post('/change-subscription-plan', verifyLoginToken, async (req, res) => {
         await changeSubscriptionPlan(req.user, packageName, yearly)
 
         return res.json({ success: true, content: 'success' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            content: error.message,
+            message: 'Something went wrong',
+            success: false
+        });
+    }
+})
+
+app.post('/cancel-subscription', verifyLoginToken, async (req, res) => {
+    try {
+
+        await cancelSubscriptionPlan(req.user)
+
+        return res.json({ success: true, message: 'success' });
     } catch (error) {
         console.error(error);
         res.status(500).json({

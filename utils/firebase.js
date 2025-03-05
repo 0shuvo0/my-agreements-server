@@ -524,6 +524,27 @@ const getSusbcriptionData = async (uid) => {
     }
 }
 
+const handleSubscriptionCancellation = async (uid) => {
+    try{
+        //Delete data from /subscriptions collection with .doc(uid)
+        // await db.collection("subscriptions").doc(uid).delete();
+
+        //Delete all agreements from /agreements colections with user: uid
+        //Thers is a function written for that deleteAgreement(uid, agreementId)
+
+        // Fetch all agreements linked to the user
+        const agreementsSnapshot = await db.collection("agreements").where("user", "==", uid).get();
+
+        // Delete all agreements
+        const deletePromises = agreementsSnapshot.docs.map(doc => deleteAgreement(uid, doc.id));
+        await Promise.all(deletePromises);
+
+    }catch(error){
+        console.error('Error deleting data:', error)
+        throw error
+    }
+}
+
 const signAgreement = async (data) => {
     // {
     //     id: 'dceD3GniTCafEZxmw8Rg'
@@ -1067,6 +1088,7 @@ module.exports = {
     
     getSusbcriptionData,
     saveSubscriptionData,
+    handleSubscriptionCancellation,
 
 
     deleteExpiredSharedAgreements,

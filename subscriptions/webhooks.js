@@ -3,7 +3,7 @@ const WHSECRET = process.env.LEMON_SQUEEZY_WHS
 
 const packages = require('./packages')
 
-const { saveSubscriptionData } = require('../utils/firebase') 
+const { saveSubscriptionData, handleSubscriptionCancellation } = require('../utils/firebase') 
 
 async function handler(req, res) {
     const hmac = crypto.createHmac('sha256', WHSECRET);
@@ -52,10 +52,18 @@ async function handler(req, res) {
     if(card_last_four) subscription.card_last_four = card_last_four
 
     if(eventType === 'subscription_created' || eventType === 'subscription_updated' || eventType === 'subscription_plan_changed'){
-
         try{
             await saveSubscriptionData(uid, subscription)
             return res.status(200).send('Subscription data saved')
+        }catch(error){
+            console.error(error)
+            return res.status(500).send('Something went wrong')
+        }
+    }else if(eventType === 'subscription_cancelled'){
+        try{
+            // await saveSubscriptionData(uid, subscription)
+            handleSubscriptionCancellation(uid)
+            return res.status(200).send('Subscription calcellation handled')
         }catch(error){
             console.error(error)
             return res.status(500).send('Something went wrong')

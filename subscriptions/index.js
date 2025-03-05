@@ -159,11 +159,39 @@ const changeSubscriptionPlan = async (user, packageName, yearly = false) => {
     }catch(error){
         throw new Error(error)
     }
+
+}
+
+const cancelSubscriptionPlan = async (user) => {
+    try{
+        const { email, uid } = user
+        if(!email || !uid){
+            throw new Error('Invalid user')
+        }
+
+
+        const data = await getSusbcriptionData(uid)
+        if(!data){
+            throw new Error('No subscription found')
+        }
+
+        const subscription_id = data.first_subscription_item?.subscription_id
+        if(!subscription_id){
+            throw new Error('No subscription id found')
+        }
+
+        const res = await lemonSqueezyApiInstance.delete(`/subscriptions/${subscription_id}`)
+
+        return res
+    }catch(error){
+        throw new Error(error)
+    }
 }
 
 module.exports = {
     getSubscriptionURL,
     getSubscriptionCustomerPortalURL,
     changeSubscriptionPlan,
-    verifySubscription
+    verifySubscription,
+    cancelSubscriptionPlan
 }
